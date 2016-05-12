@@ -1,3 +1,7 @@
 node_modules/
 ts_backup/
 mysite/
+themes/
+dump.rdb
+.DS_Store
+ss_backup.tar.gz
