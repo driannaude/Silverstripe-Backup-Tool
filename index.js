@@ -4,7 +4,6 @@
   'use strict';
   var fs = require('fs.extra');
   var path = require('path');
-  var readline = require('readline');
   var $q = require('q');
   var colors = require('colors');
   var emoji = require('node-emoji');
@@ -14,17 +13,6 @@
   var exec = require('child_process').exec;
   var program = require('commander');
   var cwd, target;
-  // var args = process.argv.slice(2, process.argv.length);
-  // var directory = args[0];
-  // var targetDirectory = args[1];
-  // var cwd = directory || '.';
-  // if (cwd.indexOf('/') === cwd.length - 1) {
-  //   cwd = cwd.slice(0, cwd.length - 1);
-  // }
-  // var target = targetDirectory || '.';
-  // if (target.indexOf('/') === target.length - 1) {
-  //   target = target.slice(0, target.length - 1);
-  // }
   program
     .version('0.1.0')
     .arguments('<source> [destination]')
@@ -33,10 +21,12 @@
       if (cwd.indexOf('/') === cwd.length - 1) {
         cwd = cwd.slice(0, cwd.length - 1);
       }
+      cwd = path.resolve(cwd);
       target = destination || '.';
       if (target.indexOf('/') === target.length - 1) {
         target = target.slice(0, target.length - 1);
       }
+      target = path.resolve(target);
     })
     .option('-f, --force', 'Force an Overwrite SSPak archive if exists')
     .parse(process.argv);
@@ -124,43 +114,6 @@
     return deferred.promise;
   }
 
-  function readConfigFile() {
-    var deferred = $q.defer();
-    var rd = readline.createInterface({
-      input: fs.createReadStream(cwd + '/mysite/_config.php'),
-      output: process.stdout,
-      terminal: false
-    });
-    var buffer = [];
-    var active = true;
-    rd.on('line', function(line) {
-      if (active && line.indexOf('BackupTool:ignore end') !== -1) {
-        active = true;
-      }
-      if (active) {
-        buffer.push(line);
-      }
-      if (!active && line.indexOf('BackupTool:ignore start') !== -1) {
-        active = false;
-      }
-    });
-    rd.on('error', function(e) {
-      // something went wrong
-      deferred.reject(e);
-    });
-    rd.on('close', function() {
-      var stream = fs.createWriteStream(target + "/ts_backup/_config.bk");
-      stream.once('open', function() {
-        var buf = buffer.join('\n');
-        buf = new Buffer(buf);
-        stream.write(buf);
-        stream.end();
-        deferred.resolve();
-      });
-    });
-    return deferred.promise;
-  }
-
   function copyMySite() {
     console.log('\nBacking Up Known Configuration Directories...\n'.underline);
     var deferred = $q.defer();
@@ -238,12 +191,11 @@
     });
     walker.on('end', function() {
       if (pluginsFound.length <= 0) {
-        if(pluginsAlreadyCompressed.length <= 0){
-            console.log(emoji.get('x') + '  No plugins found at all, are you sure you\'re in the right place?'.red);
+        if (pluginsAlreadyCompressed.length <= 0) {
+          console.log(emoji.get('x') + '  No plugins found at all, are you sure you\'re in the right place?'.red);
         } else {
           console.log(emoji.get('white_check_mark') + '  No non-composer plugins found. Yay for proper dependency management. Go you!'.red);
         }
-
         deferred.resolve();
       } else {
         compressAndSavePlugins(pluginsFound).then(function() {
@@ -262,16 +214,22 @@
     var successMessage = emoji.get('white_check_mark') + '  Found Composer JSON file, parsing...';
     var errorMessage = emoji.get('x') + '  Missing Composer file, guess we skip that part then...';
     helpers.checkExists(cwd + '/composer.json', successMessage, errorMessage).then(function() {
+      console.log(colors.cyan(cwd));
       var composerFile = require(cwd + '/composer.json');
       var requirements = composerFile.require;
+      console.log(emoji.get('white_check_mark') + '  Loaded composer requirements...');
       var reqBuffer = [];
       _.each(requirements, function(version, req) {
         var item = req.split('/').pop();
         reqBuffer.push(item);
       });
+      console.log(emoji.get('white_check_mark') + '  Added plugin names to buffer array...');
       deferred.resolve(reqBuffer);
     }, function(err) {
+      console.log(err);
       deferred.resolve();
+    }).catch(function(err) {
+      deferred.reject(err);
     });
     return deferred.promise;
   }
